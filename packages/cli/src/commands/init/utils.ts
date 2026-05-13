@@ -9,6 +9,7 @@ import color from 'picocolors';
 import shellQuote from 'shell-quote';
 import yoctoSpinner from 'yocto-spinner';
 
+import { getAnalytics } from '../../analytics/index';
 import { DepsService } from '../../services/service.deps';
 import { FileService } from '../../services/service.file';
 import { getToken, loadCredentials } from '../auth/credentials.js';
@@ -32,7 +33,7 @@ export interface ObservabilityPromptResult {
   token?: string;
 }
 
-export async function promptForObservability(): Promise<ObservabilityPromptResult> {
+export async function promptForObservability(command?: 'create' | 'init'): Promise<ObservabilityPromptResult> {
   const choice = await p.select({
     message: 'Enable Mastra Observability? (will open auth flow)',
     options: [
@@ -43,7 +44,16 @@ export async function promptForObservability(): Promise<ObservabilityPromptResul
   });
 
   if (p.isCancel(choice)) return {};
-  if (choice !== 'yes') return { enabled: false };
+
+  const enabled = choice === 'yes';
+  getAnalytics()?.trackEvent('cli_observability_selected', {
+    command,
+    enabled,
+    answer: choice,
+    selection_method: 'interactive',
+  });
+
+  if (!enabled) return { enabled: false };
 
   // Only surface the logged-in user when creds already existed before getToken().
   // If they didn't, getToken() ran the browser login() flow which prints its own
@@ -721,6 +731,7 @@ export const LLM_PROVIDERS: { value: LLMProvider; label: string; hint?: string }
 
 interface InteractivePromptArgs {
   options?: {
+    command?: 'create' | 'init';
     showBanner?: boolean;
   };
   skip?: {
@@ -735,7 +746,7 @@ interface InteractivePromptArgs {
 }
 
 export const interactivePrompt = async (args: InteractivePromptArgs = {}) => {
-  const { skip = {}, options: { showBanner = true } = {} } = args;
+  const { skip = {}, options: { command, showBanner = true } = {} } = args;
 
   if (showBanner) {
     p.intro(color.inverse(' Mastra Init '));
@@ -784,7 +795,7 @@ export const interactivePrompt = async (args: InteractivePromptArgs = {}) => {
       },
       observability: async () => {
         if (skip?.observability) return undefined;
-        return promptForObservability();
+        return promptForObservability(command);
       },
       configureMastraToolingForAgents: async () => {
         if (skip?.skills && skip?.mcpServer) return { skills: undefined, mcpServer: undefined };
